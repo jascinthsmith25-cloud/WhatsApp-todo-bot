@@ -1,8 +1,14 @@
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require("@whiskeysockets/baileys");
+const {
+  default: makeWASocket,
+  useMultiFileAuthState,
+  DisconnectReason
+} = require("@whiskeysockets/baileys");
+
 const P = require("pino");
 
 async function startBot() {
-  const { state, saveCreds } = await useMultiFileAuthState("auth_info");
+  const { state, saveCreds } =
+    await useMultiFileAuthState("auth_info");
 
   const sock = makeWASocket({
     auth: state,
@@ -13,12 +19,13 @@ async function startBot() {
 
   sock.ev.on("connection.update", ({ connection, lastDisconnect }) => {
     if (connection === "open") {
-      console.log("WhatsApp Todo Bot is connected!");
+      console.log("WhatsApp Bot is connected!");
     }
 
     if (connection === "close") {
       const shouldReconnect =
-        lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+        lastDisconnect?.error?.output?.statusCode !==
+        DisconnectReason.loggedOut;
 
       if (shouldReconnect) startBot();
     }
@@ -26,7 +33,10 @@ async function startBot() {
 
   sock.ev.on("messages.upsert", async ({ messages }) => {
     const msg = messages[0];
-    if (!msg.message || msg.key.fromMe) return;
+
+    if (!msg.message) return;
+
+    const jid = msg.key.remoteJid;
 
     const text =
       msg.message.conversation ||
@@ -35,9 +45,38 @@ async function startBot() {
 
     const command = text.trim().toLowerCase();
 
+    // ANTI-LINK FOR GROUPS
+    if (jid.endsWith("@g.us")) {
+      const hasLink =
+        /(https?:\/\/|www\.|t\.me\/|chat\.whatsapp\.com\/|instagram\.com\/|facebook\.com\/)/i.test(text);
+
+      if (hasLink) {
+        try {
+          await sock.sendMessage(jid, {
+            delete: msg.key
+          });
+
+          await sock.sendMessage(jid, {
+            text: "🔗🚫 Links are not allowed in this group."
+          });
+        } catch (err) {
+          console.log("Could not delete link:", err.message);
+        }
+
+        return;
+      }
+    }
+
+    // HELP
     if (command === "help") {
-      await sock.sendMessage(msg.key.remoteJid, {
-        text: "📝 TODO BOT\n\nadd Buy groceries\nlist\ndone 1\ndelete 1\nclear\nhelp"
+      await sock.sendMessage(jid, {
+        text:
+          "🤖 TODO BOT\n\n" +
+          "➕ add Buy groceries\n" +
+          "📋 list\n" +
+          "❌ delete 1\n" +
+          "🧹 clear\n" +
+          "🔗 Anti-link is ON in groups."
       });
     }
   });
